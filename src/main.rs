@@ -22,5 +22,7 @@ fn main() -> anyhow::Result<()> {
     // main_menu(&mut term);
     play(term.clone())?;
 
+    term.show_cursor()?;
+
     Ok(())
 }
