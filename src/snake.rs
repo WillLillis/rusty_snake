@@ -11,12 +11,22 @@ use console::{style, Key, Term};
 
 use std::time::Instant;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Dir {
     Up,
     Down,
     Left,
     Right,
+}
+
+impl Dir {
+    fn is_opposite(&self, other: Dir) -> bool {
+        match (self, other) {
+            (Dir::Up, Dir::Down) | (Dir::Down, Dir::Up) => true,
+            (Dir::Left, Dir::Right) | (Dir::Right, Dir::Left) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -84,14 +94,12 @@ impl Display for BodySegment {
 }
 
 pub struct Snake {
-    pub curr_dir: Dir,
     pub body: VecDeque<BodySegment>,
 }
 
 impl Snake {
     pub fn new() -> Self {
         Snake {
-            curr_dir: Dir::Right,
             body: VecDeque::new(),
         }
     }
@@ -171,6 +179,17 @@ impl From<UserInput> for Dir {
             UserInput::Left => Self::Left,
             UserInput::Right => Self::Right,
             _ => Self::Down,
+        }
+    }
+}
+
+impl From<Dir> for UserInput {
+    fn from(value: Dir) -> Self {
+        match value {
+            Dir::Up => Self::Up,
+            Dir::Down => Self::Down,
+            Dir::Left => Self::Left,
+            Dir::Right => Self::Right,
         }
     }
 }
@@ -311,7 +330,7 @@ pub fn play(term: Term) -> anyhow::Result<()> {
     loop {
         game_state.render()?;
         let start = Instant::now();
-        while start.elapsed().as_secs_f64() < 0.125 {
+        while start.elapsed().as_secs_f64() < 0.0625 {
             match game_state.input_rcv.try_recv() {
                 Ok(key) => {
                     user_in = key.into();
@@ -319,10 +338,19 @@ pub fn play(term: Term) -> anyhow::Result<()> {
                 Err(_e) => {}
             }
         }
+        if game_state
+            .snake
+            .body
+            .front()
+            .unwrap()
+            .dir
+            .is_opposite(user_in.into())
+        {
+            user_in = game_state.snake.body.front().unwrap().dir.into();
+        }
         match game_state.update_state(user_in) {
             Ok(GameState::Over) => {
-                let score = 69; // TODO: Move into gamestate struct
-                let msg = format!("Game Over: {}", score);
+                let msg = format!("Game Over: {}", game_state.score);
                 game_state.term.write_all(msg.as_bytes())?;
                 break;
             }
