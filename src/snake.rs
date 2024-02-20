@@ -21,11 +21,13 @@ pub enum Dir {
 
 impl Dir {
     fn is_opposite(&self, other: Dir) -> bool {
-        match (self, other) {
-            (Dir::Up, Dir::Down) | (Dir::Down, Dir::Up) => true,
-            (Dir::Left, Dir::Right) | (Dir::Right, Dir::Left) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Dir::Up, Dir::Down)
+                | (Dir::Down, Dir::Up)
+                | (Dir::Left, Dir::Right)
+                | (Dir::Right, Dir::Left)
+        )
     }
 }
 
@@ -126,7 +128,8 @@ impl Snake {
     }
 }
 
-// TODO
+// TODO - Allow config file? Specify colors for snake, border, etc.
+// screen size?
 #[allow(dead_code)]
 pub struct GameSettings {
     // todo...
@@ -135,6 +138,8 @@ pub struct GameSettings {
 pub struct SnakeGame {
     term: Term,
     input_rcv: Receiver<Key>,
+    screen_width: usize,
+    screen_height: usize,
     snake: Snake,
     score: usize,
     open_space: HashSet<TermPoint>,
@@ -198,17 +203,17 @@ impl SnakeGame {
     pub fn new(term: Term, input_rcv: Receiver<Key>) -> Self {
         let mut snake = Snake::new();
         snake.body.push_back(BodySegment::new(1, 1, Dir::Right));
-        snake.body.push_back(BodySegment::new(1, 2, Dir::Right));
+        //snake.body.push_back(BodySegment::new(1, 2, Dir::Right));
         let score = 0usize;
         let apple = TermPoint::new(1, 5);
 
         let mut open_space: HashSet<TermPoint> = HashSet::new();
 
         let (ht, wt) = term.size();
-        let height = ht as usize;
-        let width = wt as usize;
-        for col in 1..width - 1 {
-            for row in 1..height - 1 {
+        let screen_height = ht as usize;
+        let screen_width = wt as usize;
+        for col in 1..screen_width - 1 {
+            for row in 1..screen_height - 1 {
                 open_space.insert(TermPoint::new(row, col));
             }
         }
@@ -220,6 +225,8 @@ impl SnakeGame {
         SnakeGame {
             term,
             input_rcv,
+            screen_width,
+            screen_height,
             snake,
             score,
             open_space,
@@ -234,17 +241,17 @@ impl SnakeGame {
 
     // add pausing here?
     pub fn update_state(&mut self, input: UserInput) -> anyhow::Result<GameState> {
-        let (ht, wt) = self.term.size();
-        let height = ht as usize;
-        let width = wt as usize;
-
         let old_tail = *self.snake.body.back().unwrap();
         self.snake.move_body(input.into());
         self.open_space
             .remove(&self.snake.body.front().unwrap().pos);
         // edge collision check
         let head = self.snake.body.front().unwrap().pos;
-        if head.row == 0 || head.row >= height - 1 || head.col == 0 || head.col >= width - 1 {
+        if head.row == 0
+            || head.row >= self.screen_height - 1
+            || head.col == 0
+            || head.col >= self.screen_width - 1
+        {
             return Ok(GameState::Over);
         }
         // self collision check
@@ -270,28 +277,24 @@ impl SnakeGame {
     fn render(&mut self) -> anyhow::Result<()> {
         self.term.clear_screen()?;
         // draw border
-        let (ht, wt) = self.term.size();
-        let height = ht as usize;
-        let width = wt as usize;
-
         let border_block = "█";
-        let top_border = border_block.repeat(width);
+        let top_border = border_block.repeat(self.screen_width);
         self.term.move_cursor_to(0, 0)?;
         self.term.write_all(top_border.as_bytes())?;
-        self.term.move_cursor_to(0, height - 1)?;
+        self.term.move_cursor_to(0, self.screen_height - 1)?;
         self.term.write_all(top_border.as_bytes())?;
         // score
-        self.term.move_cursor_to(0, height - 1)?;
+        self.term.move_cursor_to(0, self.screen_height - 1)?;
         let score_str = format!(
             "{}{}",
             style("Score: ").black().on_white(),
             style(self.score).black().on_white()
         );
         self.term.write_all(score_str.as_bytes())?;
-        for row in 1..height - 1 {
+        for row in 1..self.screen_height - 1 {
             self.term.move_cursor_to(0, row)?;
             self.term.write_all(border_block.as_bytes())?;
-            self.term.move_cursor_to(width - 1, row)?;
+            self.term.move_cursor_to(self.screen_width - 1, row)?;
             self.term.write_all(border_block.as_bytes())?;
         }
 
@@ -328,8 +331,8 @@ pub fn play(term: Term) -> anyhow::Result<()> {
     let mut user_in = UserInput::Right;
 
     loop {
-        game_state.render()?;
         let start = Instant::now();
+        game_state.render()?;
         while start.elapsed().as_secs_f64() < 0.0625 {
             match game_state.input_rcv.try_recv() {
                 Ok(key) => {
